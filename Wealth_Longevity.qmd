@@ -4,6 +4,7 @@ format:
   dashboard:
     theme: flatly
     embed-resources: true
+    scrolling: true
     css: custom.css
     nav-buttons:
       - icon: github
@@ -137,7 +138,7 @@ cor_data <- gapminder_2007_full %>%
 
 # Overview
 
-## Row {height="150px"}
+## Row {.flow}
 
 ```{r}
 #| content: valuebox

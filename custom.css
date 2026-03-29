@@ -1,30 +1,36 @@
-.bslib-value-box {
-  min-height: 80px !important;
-  max-height: 120px !important;
+/* Let the top KPI boxes grow naturally */
+.quarto-dashboard .bslib-value-box {
+  min-height: 110px !important;
+  height: auto !important;
+  max-height: none !important;
   overflow: visible !important;
 }
 
-.bslib-value-box .value-box-grid {
+.quarto-dashboard .bslib-value-box .value-box-grid {
+  height: auto !important;
+  overflow: visible !important;
+  align-items: center !important;
+}
+
+/* Keep value text from being oversized */
+.quarto-dashboard .bslib-value-box .value-box-value {
+  font-size: 1.35rem !important;
+  line-height: 1.15 !important;
   overflow: visible !important;
 }
 
-.bslib-value-box .value-box-value {
-  font-size: 1.4rem !important;
+.quarto-dashboard .bslib-value-box .value-box-title {
+  font-size: 0.8rem !important;
+  line-height: 1.2 !important;
 }
 
-.bslib-value-box .value-box-title {
-  font-size: 0.75rem !important;
+.quarto-dashboard .bslib-value-box .bi {
+  font-size: 1.1rem !important;
+  line-height: 1 !important;
 }
 
-.bslib-value-box .bi {
-  font-size: 1.2rem !important;
-}
-
-.callout-note .callout-body {
-  font-size: 16px !important;
-  line-height: 1.6 !important;
-}
-
+/* Your callout styling can stay */
+.callout-note .callout-body,
 .callout-body-container {
   font-size: 16px !important;
   line-height: 1.6 !important;
