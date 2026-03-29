@@ -1,0 +1,598 @@
+---
+title: "Wealth & Longevity Dashboard"
+format:
+  dashboard:
+    theme: flatly
+    embed-resources: true
+    css: custom.css
+    nav-buttons:
+      - icon: github
+        href: https://github.com/KGmbH/Wealth_Longevity_Dashboard
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+# ── Libraries ─────────────────────────────────────────────────────────────────
+library(tidyverse)
+library(gapminder)
+library(plotly)
+library(scales)
+library(ggrepel)
+library(WDI)
+library(countrycode)
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+continent_colours <- c(
+  Africa   = "#E74C3C",
+  Americas = "#E67E22",
+  Asia     = "#2980B9",
+  Europe   = "#27AE60",
+  Oceania  = "#8E44AD"
+)
+
+# ── Global trend ──────────────────────────────────────────────────────────────
+global_trend <- gapminder %>%
+  group_by(year) %>%
+  summarise(
+    lifeExp   = mean(lifeExp,   na.rm = TRUE),
+    gdpPercap = mean(gdpPercap, na.rm = TRUE),
+    pop       = sum(pop,        na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# ── Continent trend ───────────────────────────────────────────────────────────
+continent_trend <- gapminder %>%
+  group_by(year, continent) %>%
+  summarise(
+    lifeExp   = mean(lifeExp,   na.rm = TRUE),
+    gdpPercap = mean(gdpPercap, na.rm = TRUE),
+    pop       = sum(pop,        na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# ── Correlation by continent ──────────────────────────────────────────────────
+cor_by_continent <- gapminder %>%
+  filter(continent != "Oceania") %>%
+  group_by(year, continent) %>%
+  summarise(
+    correlation = cor(log(gdpPercap), lifeExp, method = "pearson"),
+    .groups = "drop"
+  )
+
+# ── 2007 snapshot + regression + outliers ─────────────────────────────────────
+gapminder_2007 <- gapminder %>%
+  filter(year == 2007)
+
+model <- lm(lifeExp ~ log(gdpPercap), data = gapminder_2007)
+
+gapminder_2007 <- gapminder_2007 %>%
+  mutate(
+    predicted = predict(model),
+    residual  = residuals(model),
+    std_resid = rstandard(model),
+    outlier   = abs(residual) > 10,
+    direction = case_when(
+      residual >  10 ~ "Healthier than expected",
+      residual < -10 ~ "Sicker than expected",
+      TRUE           ~ "As expected"
+    ),
+    iso3c = countrycode(country,
+                        origin      = "country.name",
+                        destination = "iso3c")
+  )
+
+# ── Download WDI indicators ───────────────────────────────────────────────────
+wdi_data <- WDI(
+  indicator = c(
+    hiv           = "SH.DYN.AIDS.ZS",
+    child_mort    = "SH.DYN.MORT",
+    tuberculosis  = "SH.TBS.INCD",
+    malaria       = "SH.MLR.INCD.P3",
+    sanitation    = "SH.STA.BASS.ZS",
+    battle_deaths = "VC.BTL.DETH"
+  ),
+  start = 2007,
+  end   = 2007,
+  extra = TRUE
+)
+
+# ── Clean WDI ─────────────────────────────────────────────────────────────────
+wdi_clean <- wdi_data %>%
+  filter(region != "Aggregates") %>%
+  select(iso3c, hiv, child_mort, tuberculosis,
+         malaria, sanitation, battle_deaths) %>%
+  mutate(battle_deaths = replace_na(battle_deaths, 0))
+
+# ── Join WDI to all countries ─────────────────────────────────────────────────
+gapminder_2007_full <- gapminder_2007 %>%
+  left_join(wdi_clean, by = "iso3c")
+
+# ── Red outlier countries with WDI indicators ─────────────────────────────────
+outliers_red <- gapminder_2007_full %>%
+  filter(direction == "Sicker than expected")
+
+# ── Correlation across all countries ─────────────────────────────────────────
+cor_data <- gapminder_2007_full %>%
+  select(residual, hiv, tuberculosis, sanitation) %>%
+  drop_na() %>%
+  cor(method = "pearson") %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  filter(variable != "residual") %>%
+  select(variable, residual) %>%
+  arrange(residual) %>%
+  mutate(
+    variable = recode(variable,
+      "hiv"          = "HIV prevalence",
+      "tuberculosis" = "Tuberculosis incidence",
+      "sanitation"   = "Sanitation access"
+    ),
+    direction = ifelse(residual < 0, "Negative", "Positive"),
+    variable  = reorder(variable, residual)
+  )
+```
+
+# Overview
+
+## Row {height="15%"}
+
+```{r}
+#| content: valuebox
+#| title: "Countries"
+list(icon = "globe", color = "#2C3E50",
+     value = n_distinct(gapminder$country))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Africa"
+list(icon = "geo-alt", color = "#E74C3C",
+     value = n_distinct(gapminder$country[gapminder$continent == "Africa"]))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Americas"
+list(icon = "geo-alt", color = "#E67E22",
+     value = n_distinct(gapminder$country[gapminder$continent == "Americas"]))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Asia"
+list(icon = "geo-alt", color = "#2980B9",
+     value = n_distinct(gapminder$country[gapminder$continent == "Asia"]))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Europe"
+list(icon = "geo-alt", color = "#27AE60",
+     value = n_distinct(gapminder$country[gapminder$continent == "Europe"]))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Oceania"
+list(icon = "geo-alt", color = "#8E44AD",
+     value = n_distinct(gapminder$country[gapminder$continent == "Oceania"]))
+```
+
+## Row {height="75%"}
+
+### Column {width="33%"}
+
+```{r}
+#| title: "Life expectancy rising globally"
+#| padding: 0
+
+ggplot(global_trend, aes(x = year, y = lifeExp)) +
+  geom_line(linewidth = 1.2, color = "#27AE60") +
+  geom_point(size = 2.5, color = "#27AE60") +
+  labs(x = NULL, y = "Life expectancy (years)") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+### Column {width="33%"}
+
+```{r}
+#| title: "GDP per capita growing steadily"
+#| padding: 0
+
+ggplot(global_trend, aes(x = year, y = gdpPercap)) +
+  geom_line(linewidth = 1.2, color = "#E67E22") +
+  geom_point(size = 2.5, color = "#E67E22") +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(x = NULL, y = "GDP per capita (USD)") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+### Column {width="33%"}
+
+```{r}
+#| title: "World population more than doubled"
+#| padding: 0
+
+ggplot(global_trend, aes(x = year, y = pop / 1e9)) +
+  geom_line(linewidth = 1.2, color = "#2980B9") +
+  geom_point(size = 2.5, color = "#2980B9") +
+  labs(x = NULL, y = "Population (billions)") +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+## Row {height="10%"}
+
+::: {.callout-note collapse="true"}
+## What these charts show
+
+These three charts show global averages across all 142 countries from 1952 to 2007. Over these 55 years the world made remarkable progress across all three dimensions — average **life expectancy** rose from **49.1 to 67.0 years** (+17.9 years), average **GDP per capita** grew from **\$3,725 to \$11,680** (+213%), and **total world population** increased from **2.4 to 6.0 billion** (+150%). The key question is whether this progress was shared equally across regions — explored on the following pages.
+:::
+
+# Growth by Continent
+
+## Row {height="75%"}
+
+### Column {width="33%"}
+
+```{r}
+#| title: "Life expectancy gains were universal — but Africa started and ended lowest"
+#| padding: 0
+
+ggplot(continent_trend, aes(x = year, y = lifeExp,
+                             color = continent)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = continent_colours) +
+  labs(x = NULL, y = "Life expectancy (years)", color = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+### Column {width="33%"}
+
+```{r}
+#| title: "GDP growth was concentrated in Europe and Oceania — Asia accelerated late"
+#| padding: 0
+
+ggplot(continent_trend, aes(x = year, y = gdpPercap,
+                             color = continent)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = continent_colours) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(x = NULL, y = "GDP per capita (USD)", color = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+### Column {width="33%"}
+
+```{r}
+#| title: "Asia's population growth dwarfs all other regions"
+#| padding: 0
+
+ggplot(continent_trend, aes(x = year, y = pop / 1e9,
+                             color = continent)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = continent_colours) +
+  labs(x = NULL, y = "Population (billions)", color = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50")
+  )
+```
+
+## Row {height="25%"}
+
+::: {.callout-note collapse="true"}
+## What these charts show
+
+Breaking down by continent reveals the unequal nature of global progress. While **life expectancy** improved across all regions, Africa consistently lagged behind and ended 2007 at levels Europe had already achieved in the 1950s. **GDP growth** was heavily concentrated in Europe and Oceania, with Asia showing rapid acceleration only from the 1980s onwards. **Population growth** was almost entirely an Asian and African story — Europe and Oceania remained virtually flat.
+:::
+
+# Does Money Buy Health?
+
+## Row {height="75%"}
+
+### Column {width="50%"}
+
+```{r}
+#| title: "GDP and life expectancy in 2007 — wealthier countries live longer"
+#| padding: 0
+
+ggplot(gapminder_2007, aes(x = gdpPercap, y = lifeExp,
+                            color = continent)) +
+  geom_point(size = 3, alpha = 0.7) +
+  scale_x_log10(labels = scales::dollar) +
+  scale_color_manual(values = continent_colours) +
+  labs(
+    x       = "GDP per capita (log scale)",
+    y       = "Life expectancy (years)",
+    color   = NULL,
+    caption = "Data: Gapminder, 2007"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50"),
+    plot.caption     = element_text(color = "grey60", size = 9)
+  )
+```
+
+### Column {width="50%"}
+
+```{r}
+#| title: "The GDP-health link strengthened over time — but unevenly across continents"
+#| padding: 0
+
+ggplot(cor_by_continent, aes(x = year, y = correlation,
+                              color = continent)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = continent_colours) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    x       = NULL,
+    y       = "Correlation between log(GDP) and life expectancy",
+    color   = NULL,
+    caption = "Data: Gapminder, 1952–2007. Oceania excluded (n=2 countries)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50"),
+    plot.caption     = element_text(color = "grey60", size = 9)
+  )
+```
+
+## Row {height="25%"}
+
+::: {.callout-note collapse="true"}
+## What these charts show
+
+The left chart shows the relationship between GDP per capita and life expectancy across all 142 countries in 2007. The x-axis uses a **log scale** — this means each step represents a multiplication rather than an addition. For example the distance from \$1,000 to \$10,000 is the same as from \$10,000 to \$100,000. This is useful here because the difference between a \$500 and \$1,000 economy is far more meaningful for human welfare than the difference between a \$30,000 and \$60,000 economy. African countries (red) are clustered at the lower end of both dimensions.
+
+The right chart shows how the **correlation between GDP and life expectancy** evolved over time within each continent (Oceania excluded — only 2 countries). Africa shows a striking decline from the 1980s onwards — wealth became a less reliable predictor of health outcomes within Africa, likely driven by the HIV/AIDS crisis affecting the continent regardless of income level. A declining correlation signals that non-economic shocks — epidemics, wars, famines — are overriding the wealth-health relationship.
+:::
+
+# Outliers: Who Bucks the Trend?
+
+## Row {height="75%"}
+
+### Column {width="50%"}
+
+```{r}
+#| title: "Most countries follow the trend — but some are far healthier or sicker than their wealth predicts"
+#| padding: 0
+
+outlier_labels <- gapminder_2007 %>%
+  filter(outlier)
+
+ggplot(gapminder_2007, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point(aes(color = direction), size = 3, alpha = 0.7) +
+  geom_line(aes(y = predicted), color = "grey40",
+            linewidth = 0.8, linetype = "dashed") +
+  geom_text_repel(
+    data = outlier_labels,
+    aes(label = country, color = direction),
+    size = 3, fontface = "bold",
+    box.padding = 0.5, point.padding = 0.3,
+    segment.color = "grey70", segment.size = 0.4,
+    show.legend = FALSE
+  ) +
+  scale_x_log10(labels = scales::dollar) +
+  scale_color_manual(
+    values = c(
+      "Healthier than expected" = "#27AE60",
+      "Sicker than expected"    = "#E74C3C",
+      "As expected"             = "grey70"
+    )
+  ) +
+  labs(
+    x       = "GDP per capita (log scale)",
+    y       = "Life expectancy (years)",
+    color   = NULL,
+    caption = "Data: Gapminder, 2007. Outliers defined as residual > 10 years from trend"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50"),
+    plot.caption     = element_text(color = "grey60", size = 9)
+  )
+```
+
+### Column {width="50%"}
+
+```{r}
+#| title: "The biggest overperformers and underperformers"
+#| padding: 0
+
+top_outliers <- gapminder_2007 %>%
+  arrange(desc(residual)) %>%
+  slice_head(n = 10)
+
+bottom_outliers <- gapminder_2007 %>%
+  arrange(residual) %>%
+  slice_head(n = 10)
+
+outliers_bar <- bind_rows(top_outliers, bottom_outliers) %>%
+  mutate(
+    country   = reorder(country, residual),
+    direction = ifelse(residual > 0, "Healthier than expected", "Sicker than expected")
+  )
+
+ggplot(outliers_bar, aes(x = country, y = residual, fill = direction)) +
+  geom_col(width = 0.7, alpha = 0.85) +
+  geom_hline(yintercept = 0, color = "grey40", linewidth = 0.5) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "Healthier than expected" = "#27AE60",
+      "Sicker than expected"    = "#E74C3C"
+    )
+  ) +
+  labs(
+    x       = NULL,
+    y       = "Years above or below predicted life expectancy",
+    fill    = NULL,
+    caption = "Data: Gapminder, 2007"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position    = "top",
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "grey92", linewidth = 0.4),
+    axis.title         = element_text(color = "grey40", size = 10),
+    axis.text          = element_text(color = "grey50"),
+    plot.caption       = element_text(color = "grey60", size = 9)
+  )
+```
+
+## Row {height="25%"}
+
+::: {.callout-note collapse="true"}
+## How outliers were identified
+
+A linear regression was fitted predicting life expectancy from log(GDP per capita) across all 142 countries in 2007. Countries whose actual life expectancy deviated by more than 10 years from what the model predicted are flagged as outliers. **Green countries** live significantly longer than their wealth would predict — many are small nations with strong public health systems or social cohesion. **Red countries** live significantly shorter than their wealth would predict — the majority are African nations severely affected by the HIV/AIDS epidemic, where high adult mortality drove down life expectancy regardless of economic development. This explains the declining GDP-health correlation in Africa visible on the previous page.
+:::
+
+# Why Are They Sicker?
+
+## Row {height="75%"}
+
+### Column {width="40%"}
+
+```{r}
+#| title: "Across all countries: sanitation, HIV and tuberculosis correlate with lower life expectancy than wealth predicts"
+#| padding: 0
+
+ggplot(cor_data, aes(x = variable, y = residual, fill = direction)) +
+  geom_col(width = 0.5, alpha = 0.85) +
+  geom_hline(yintercept = 0, color = "grey40", linewidth = 0.5) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c("Negative" = "#E74C3C", "Positive" = "#27AE60"),
+    guide  = "none"
+  ) +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.25)) +
+  labs(
+    x       = NULL,
+    y       = "Correlation with deviation from expected life expectancy",
+    caption = "Based on all 142 countries, 2007"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor   = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(color = "grey92", linewidth = 0.4),
+    axis.title         = element_text(color = "grey40", size = 10),
+    axis.text          = element_text(color = "grey50"),
+    plot.caption       = element_text(color = "grey60", size = 9)
+  )
+```
+
+### Column {width="60%"}
+
+```{r}
+#| title: "Two distinct patterns among outliers: disease-driven vs sanitation-driven mortality"
+#| padding: 0
+
+outliers_red %>%
+  select(country, hiv, tuberculosis, sanitation, lifeExp, residual) %>%
+  drop_na() %>%
+  mutate(
+    pattern = case_when(
+      hiv > 10 | tuberculosis > 800 ~ "Disease-driven",
+      TRUE                          ~ "Sanitation-driven"
+    )
+  ) %>%
+  ggplot(aes(x = sanitation, y = hiv, color = pattern)) +
+  geom_point(size = 5, alpha = 0.9) +
+  geom_text_repel(
+    aes(label = paste0(country, "\n", round(lifeExp, 1), " yrs")),
+    size = 3, fontface = "bold",
+    box.padding = 0.6, point.padding = 0.4,
+    segment.color = "grey70", segment.size = 0.4,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = c(
+      "Disease-driven"    = "#E74C3C",
+      "Sanitation-driven" = "#2980B9"
+    )
+  ) +
+  labs(
+    x       = "Sanitation access (% of population)",
+    y       = "HIV prevalence (% of adults)",
+    color   = NULL,
+    caption = "Outlier countries only. Life expectancy shown in labels."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92", linewidth = 0.4),
+    axis.title       = element_text(color = "grey40", size = 10),
+    axis.text        = element_text(color = "grey50"),
+    plot.caption     = element_text(color = "grey60", size = 9)
+  )
+```
+
+## Row {height="25%"}
+
+::: {.callout-note collapse="true"}
+## How to read these charts
+
+The left chart shows the **Pearson correlation** between each factor and the deviation from expected life expectancy across all 142 countries in 2007. A negative bar means higher values of that factor are associated with countries living *shorter* than their wealth would predict — **HIV prevalence** (r = -0.63) and **tuberculosis incidence** (r = -0.52) both show this pattern strongly. A positive bar means higher values are associated with countries living *longer* than their wealth predicts — **sanitation access** (r = +0.27) shows this, meaning better infrastructure helps countries outperform their GDP. Together these three factors help explain why some countries deviate from the global wealth-health trend.
+
+The right chart zooms in on the outlier countries and reveals **two distinct groups**. The **red cluster** — Swaziland, Botswana, South Africa, Lesotho and Namibia — are relatively wealthy southern African countries with reasonably good sanitation but extremely high HIV prevalence, which is the primary driver of their unexpectedly low life expectancy. The **blue cluster** — Sierra Leone, Mozambique, Nigeria, Angola and Afghanistan — have very low sanitation access and lower HIV rates, suggesting that lack of basic infrastructure is the dominant factor. Life expectancy in years is shown directly in each country label.
+:::
