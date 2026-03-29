@@ -1,9 +1,31 @@
+.bslib-value-box {
+  min-height: 80px !important;
+  max-height: 120px !important;
+  overflow: visible !important;
+}
+
+.bslib-value-box .value-box-grid {
+  overflow: visible !important;
+}
+
+.bslib-value-box .value-box-value {
+  font-size: 1.4rem !important;
+}
+
+.bslib-value-box .value-box-title {
+  font-size: 0.75rem !important;
+}
+
+.bslib-value-box .bi {
+  font-size: 1.2rem !important;
+}
+
 .callout-note .callout-body {
-  font-size: 20px !important;
+  font-size: 16px !important;
   line-height: 1.6 !important;
 }
 
 .callout-body-container {
-  font-size: 20px !important;
+  font-size: 16px !important;
   line-height: 1.6 !important;
 }

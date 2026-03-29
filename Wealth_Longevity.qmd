@@ -137,7 +137,7 @@ cor_data <- gapminder_2007_full %>%
 
 # Overview
 
-## Row {height="15%"}
+## Row {height="150px"}
 
 ```{r}
 #| content: valuebox
@@ -181,7 +181,7 @@ list(icon = "geo-alt", color = "#8E44AD",
      value = n_distinct(gapminder$country[gapminder$continent == "Oceania"]))
 ```
 
-## Row {height="75%"}
+## Row {height="70%"}
 
 ### Column {width="33%"}
 
